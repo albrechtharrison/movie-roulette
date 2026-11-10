@@ -12,6 +12,7 @@ const FiltersSchema = z.object({
   region: z.string().default("US"),
   releaseYearFrom: z.number().nullable().default(null),
   releaseYearTo: z.number().nullable().default(null),
+  minRating: z.number().min(0).max(10).default(0),
 });
 
 const RequestSchema = z.object({

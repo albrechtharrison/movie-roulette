@@ -39,6 +39,11 @@ export function MovieCard({
           <p className="mt-1 text-sm text-neutral-400">
             ⭐ {movie.voteAverage.toFixed(1)} · {movie.voteCount.toLocaleString()} votes
           </p>
+          {movie.oscarBestPictureYear !== undefined && (
+            <p className="mt-1 inline-flex items-center gap-1 rounded-full bg-amber-400/10 px-2.5 py-1 text-xs font-medium text-amber-300">
+              🏆 Best Picture winner ({movie.oscarBestPictureYear})
+            </p>
+          )}
         </div>
 
         <p className="text-sm leading-relaxed text-neutral-200">{movie.overview || "No synopsis available."}</p>

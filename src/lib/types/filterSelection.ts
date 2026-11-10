@@ -14,6 +14,7 @@ export interface FilterSelection {
   companies: NamedItem[];
   releaseYearFrom: number | null;
   releaseYearTo: number | null;
+  minRating: number;
 }
 
 export const EMPTY_SELECTION: FilterSelection = {
@@ -24,6 +25,7 @@ export const EMPTY_SELECTION: FilterSelection = {
   companies: [],
   releaseYearFrom: null,
   releaseYearTo: null,
+  minRating: 0,
 };
 
 export function toFilters(selection: FilterSelection): Filters {
@@ -35,5 +37,6 @@ export function toFilters(selection: FilterSelection): Filters {
     companyIds: selection.companies.map((c) => c.id),
     releaseYearFrom: selection.releaseYearFrom,
     releaseYearTo: selection.releaseYearTo,
+    minRating: selection.minRating,
   };
 }

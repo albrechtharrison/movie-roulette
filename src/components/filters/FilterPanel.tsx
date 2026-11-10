@@ -7,6 +7,7 @@ import { GenreMultiSelect } from "@/components/filters/GenreMultiSelect";
 import { CastAutocomplete } from "@/components/filters/CastAutocomplete";
 import { CompanyAutocomplete } from "@/components/filters/CompanyAutocomplete";
 import { YearRangeSlider } from "@/components/filters/YearRangeSlider";
+import { RatingSlider } from "@/components/filters/RatingSlider";
 import type { FilterSelection } from "@/lib/types/filterSelection";
 
 export function FilterPanel({
@@ -23,7 +24,8 @@ export function FilterPanel({
     value.genreIds.length +
     value.cast.length +
     value.companies.length +
-    (value.releaseYearFrom !== null || value.releaseYearTo !== null ? 1 : 0);
+    (value.releaseYearFrom !== null || value.releaseYearTo !== null ? 1 : 0) +
+    (value.minRating > 0 ? 1 : 0);
 
   return (
     <div className="w-full rounded-xl bg-neutral-900/60 p-4">
@@ -84,6 +86,11 @@ export function FilterPanel({
             onChange={(releaseYearFrom, releaseYearTo) =>
               onChange({ ...value, releaseYearFrom, releaseYearTo })
             }
+          />
+
+          <RatingSlider
+            value={value.minRating}
+            onChange={(minRating) => onChange({ ...value, minRating })}
           />
         </div>
       )}

@@ -7,6 +7,7 @@ import {
   type TmdbMovie,
 } from "@/lib/tmdb/types";
 import { mapMovie, mapWatchProviderBucket } from "@/lib/tmdb/mappers";
+import { OSCAR_BEST_PICTURE_WINNERS_BY_ID } from "@/lib/data/oscarBestPicture";
 import { toDiscoverParams, RELAX_ORDER, type DiscoverParams } from "@/lib/filters/toDiscoverParams";
 import type { Filters, Movie, PickMovieEmptyResult, PickMovieResult } from "@/lib/types/domain";
 import {
@@ -86,6 +87,8 @@ function pickRandom<T>(items: T[]): T | undefined {
 
 async function enrichWithWatchProviders(movie: TmdbMovie, region: string): Promise<Movie> {
   const domainMovie = mapMovie(movie);
+  const oscarWin = OSCAR_BEST_PICTURE_WINNERS_BY_ID.get(movie.id);
+  if (oscarWin) domainMovie.oscarBestPictureYear = oscarWin.year;
   try {
     const providersResponse = await withCache(
       `watch-providers:${movie.id}:${region}`,
@@ -148,6 +151,9 @@ export async function pickMovie(
       if (category === "releaseYear") {
         if (relaxedFilters.releaseYearFrom === null && relaxedFilters.releaseYearTo === null) continue;
         relaxedFilters = { ...relaxedFilters, releaseYearFrom: null, releaseYearTo: null };
+      } else if (category === "minRating") {
+        if (relaxedFilters.minRating === 0) continue;
+        relaxedFilters = { ...relaxedFilters, minRating: 0 };
       } else {
         if (relaxedFilters[category].length === 0) continue;
         relaxedFilters = { ...relaxedFilters, [category]: [] };
