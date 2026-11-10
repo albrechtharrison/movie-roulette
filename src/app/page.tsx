@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { usePickMovie } from "@/hooks/usePickMovie";
 import { useDecisionStore } from "@/hooks/useDecisionStore";
@@ -9,11 +9,23 @@ import { MovieCard } from "@/components/picker/MovieCard";
 import { FilterPanel } from "@/components/filters/FilterPanel";
 import { EMPTY_SELECTION, toFilters, type FilterSelection } from "@/lib/types/filterSelection";
 import type { DecisionStatus } from "@/lib/decisionStore";
+import { RECENT_PICKS_BUFFER_SIZE } from "@/lib/selection/constants";
 
 export default function Home() {
   const [localSelection, setLocalSelection] = useState<Omit<FilterSelection, "region">>(EMPTY_SELECTION);
   const pickMovie = usePickMovie();
   const { preferences, setPreferences, getExclusionIds, getStatus, setDecision } = useDecisionStore();
+
+  // Session-only "don't immediately repeat" buffer — on top of the real
+  // seen/not-interested/maybe-later exclusions, this stops the same movie
+  // from reappearing a few clicks later within one sitting.
+  const recentlyShownRef = useRef<number[]>([]);
+  const rememberShown = (movieId: number) => {
+    const buf = recentlyShownRef.current;
+    if (buf[buf.length - 1] === movieId) return;
+    buf.push(movieId);
+    if (buf.length > RECENT_PICKS_BUFFER_SIZE) buf.shift();
+  };
 
   // Region lives in shared preferences (persists across reloads and the history page);
   // the rest of the filters are session-only local state.
@@ -25,8 +37,16 @@ export default function Home() {
     setLocalSelection(rest);
   };
 
-  const handlePick = () => {
-    pickMovie.mutate({ filters: toFilters(selection), exclusionIds: getExclusionIds() });
+  const rollPick = () => {
+    const exclusionIds = [...getExclusionIds(), ...recentlyShownRef.current];
+    pickMovie.mutate(
+      { filters: toFilters(selection), exclusionIds },
+      {
+        onSuccess: (data) => {
+          if (!("empty" in data)) rememberShown(data.movie.id);
+        },
+      }
+    );
   };
 
   const result = pickMovie.data;
@@ -42,7 +62,7 @@ export default function Home() {
       releaseDate: movie.releaseDate,
     });
     // The current movie is now excluded, so roll the next one right away.
-    pickMovie.mutate({ filters: toFilters(selection), exclusionIds: getExclusionIds() });
+    rollPick();
   };
 
   return (
@@ -54,7 +74,7 @@ export default function Home() {
 
       <FilterPanel value={selection} onChange={handleSelectionChange} />
 
-      <PickButton onClick={handlePick} loading={pickMovie.isPending} />
+      <PickButton onClick={rollPick} loading={pickMovie.isPending} />
 
       {pickMovie.isError && (
         <p className="text-sm text-red-400">{(pickMovie.error as Error).message}</p>

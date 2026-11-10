@@ -48,7 +48,12 @@ export interface Filters {
   castPersonIds: number[];
   companyIds: number[];
   region: string;
+  /** Inclusive release-year bounds. null means unbounded on that side. */
+  releaseYearFrom: number | null;
+  releaseYearTo: number | null;
 }
+
+export const EARLIEST_RELEASE_YEAR = 1900;
 
 export const EMPTY_FILTERS: Filters = {
   watchProviderIds: [],
@@ -56,6 +61,8 @@ export const EMPTY_FILTERS: Filters = {
   castPersonIds: [],
   companyIds: [],
   region: "US",
+  releaseYearFrom: null,
+  releaseYearTo: null,
 };
 
 export interface PickMovieResult {

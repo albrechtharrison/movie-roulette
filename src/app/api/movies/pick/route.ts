@@ -10,6 +10,8 @@ const FiltersSchema = z.object({
   castPersonIds: z.array(z.number()).default([]),
   companyIds: z.array(z.number()).default([]),
   region: z.string().default("US"),
+  releaseYearFrom: z.number().nullable().default(null),
+  releaseYearTo: z.number().nullable().default(null),
 });
 
 const RequestSchema = z.object({

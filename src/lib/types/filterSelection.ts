@@ -12,6 +12,8 @@ export interface FilterSelection {
   genreIds: number[];
   cast: NamedItem[];
   companies: NamedItem[];
+  releaseYearFrom: number | null;
+  releaseYearTo: number | null;
 }
 
 export const EMPTY_SELECTION: FilterSelection = {
@@ -20,6 +22,8 @@ export const EMPTY_SELECTION: FilterSelection = {
   genreIds: [],
   cast: [],
   companies: [],
+  releaseYearFrom: null,
+  releaseYearTo: null,
 };
 
 export function toFilters(selection: FilterSelection): Filters {
@@ -29,5 +33,7 @@ export function toFilters(selection: FilterSelection): Filters {
     genreIds: selection.genreIds,
     castPersonIds: selection.cast.map((c) => c.id),
     companyIds: selection.companies.map((c) => c.id),
+    releaseYearFrom: selection.releaseYearFrom,
+    releaseYearTo: selection.releaseYearTo,
   };
 }

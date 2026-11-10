@@ -13,6 +13,7 @@ import {
   CURATED_POOL_RATIO,
   CURATED_POOL_PAGE_COUNT,
   RANDOM_POOL_PAGE_COUNT,
+  PAGES_PER_FETCH,
   VOTE_COUNT_FLOOR,
   MAX_DISCOVER_PAGE,
 } from "@/lib/selection/constants";
@@ -36,19 +37,40 @@ interface PoolResult {
   totalPages: number;
 }
 
+function dedupeById(movies: TmdbMovie[]): TmdbMovie[] {
+  const seen = new Set<number>();
+  return movies.filter((m) => {
+    if (seen.has(m.id)) return false;
+    seen.add(m.id);
+    return true;
+  });
+}
+
+/**
+ * Samples several pages across a wide page range and merges them, rather than
+ * one page from a narrow range — TMDB's popularity ranking barely changes
+ * week to week, so a single 20-movie page (especially from just the first few
+ * pages) makes repeat picks feel like the same handful of movies every time.
+ */
 async function fetchPool(baseParams: DiscoverParams, maxPageSample: number): Promise<PoolResult> {
   const firstPage = await fetchDiscoverPage({ ...baseParams, page: 1 });
   const cappedTotalPages = Math.min(firstPage.total_pages, MAX_DISCOVER_PAGE);
   if (cappedTotalPages <= 1) {
     return { candidates: firstPage.results, totalPages: cappedTotalPages };
   }
+
   const pageRange = Math.min(maxPageSample, cappedTotalPages);
-  const page = randomInt(pageRange);
-  if (page === 1) {
-    return { candidates: firstPage.results, totalPages: cappedTotalPages };
+  const pagesToFetch = Math.min(PAGES_PER_FETCH, pageRange);
+  const chosenPages = new Set<number>([1]); // page 1 is already fetched, reuse it for free
+  while (chosenPages.size < pagesToFetch) {
+    chosenPages.add(randomInt(pageRange));
   }
-  const sampledPage = await fetchDiscoverPage({ ...baseParams, page });
-  return { candidates: sampledPage.results, totalPages: cappedTotalPages };
+
+  const otherPages = [...chosenPages].filter((p) => p !== 1);
+  const otherResponses = await Promise.all(otherPages.map((page) => fetchDiscoverPage({ ...baseParams, page })));
+
+  const candidates = dedupeById([firstPage.results, ...otherResponses.map((r) => r.results)].flat());
+  return { candidates, totalPages: cappedTotalPages };
 }
 
 function removeExcluded(movies: TmdbMovie[], exclusionIds: number[]): TmdbMovie[] {
@@ -123,8 +145,13 @@ export async function pickMovie(
     // Progressively relax filters on the curated fetch only, narrowest category first.
     let relaxedFilters = { ...filters };
     for (const category of RELAX_ORDER) {
-      if (relaxedFilters[category].length === 0) continue;
-      relaxedFilters = { ...relaxedFilters, [category]: [] };
+      if (category === "releaseYear") {
+        if (relaxedFilters.releaseYearFrom === null && relaxedFilters.releaseYearTo === null) continue;
+        relaxedFilters = { ...relaxedFilters, releaseYearFrom: null, releaseYearTo: null };
+      } else {
+        if (relaxedFilters[category].length === 0) continue;
+        relaxedFilters = { ...relaxedFilters, [category]: [] };
+      }
       relaxed.push(category);
 
       const relaxedParams = toDiscoverParams(relaxedFilters, {

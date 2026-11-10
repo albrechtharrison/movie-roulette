@@ -7,6 +7,8 @@ export interface DiscoverParams {
   with_genres?: string;
   with_cast?: string;
   with_companies?: string;
+  "primary_release_date.gte"?: string;
+  "primary_release_date.lte"?: string;
   sort_by?: string;
   "vote_count.gte"?: number;
   include_adult: boolean;
@@ -32,6 +34,8 @@ export function toDiscoverParams(
     with_genres: filters.genreIds.length ? filters.genreIds.join(",") : undefined,
     with_cast: filters.castPersonIds.length ? filters.castPersonIds.join("|") : undefined,
     with_companies: filters.companyIds.length ? filters.companyIds.join("|") : undefined,
+    "primary_release_date.gte": filters.releaseYearFrom ? `${filters.releaseYearFrom}-01-01` : undefined,
+    "primary_release_date.lte": filters.releaseYearTo ? `${filters.releaseYearTo}-12-31` : undefined,
     include_adult: false,
     language: "en-US",
     page: 1,
@@ -39,10 +43,20 @@ export function toDiscoverParams(
   return { ...base, ...overrides };
 }
 
-export type RelaxableCategory = "castPersonIds" | "companyIds" | "genreIds" | "watchProviderIds";
+export type RelaxableCategory =
+  | "releaseYear"
+  | "castPersonIds"
+  | "companyIds"
+  | "genreIds"
+  | "watchProviderIds";
 
-/** Order to drop filter categories in when the pool is empty — narrowest first. Region is never dropped. */
+/**
+ * Order to drop filter categories in when the pool is empty — narrowest/most
+ * negotiable first. A year range is usually a soft preference, so it goes
+ * before genre/provider choices, which are more deliberate. Region is never dropped.
+ */
 export const RELAX_ORDER: RelaxableCategory[] = [
+  "releaseYear",
   "castPersonIds",
   "companyIds",
   "genreIds",

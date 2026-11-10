@@ -6,6 +6,7 @@ import { ProviderMultiSelect } from "@/components/filters/ProviderMultiSelect";
 import { GenreMultiSelect } from "@/components/filters/GenreMultiSelect";
 import { CastAutocomplete } from "@/components/filters/CastAutocomplete";
 import { CompanyAutocomplete } from "@/components/filters/CompanyAutocomplete";
+import { YearRangeSlider } from "@/components/filters/YearRangeSlider";
 import type { FilterSelection } from "@/lib/types/filterSelection";
 
 export function FilterPanel({
@@ -18,7 +19,11 @@ export function FilterPanel({
   const [open, setOpen] = useState(false);
 
   const activeCount =
-    value.watchProviderIds.length + value.genreIds.length + value.cast.length + value.companies.length;
+    value.watchProviderIds.length +
+    value.genreIds.length +
+    value.cast.length +
+    value.companies.length +
+    (value.releaseYearFrom !== null || value.releaseYearTo !== null ? 1 : 0);
 
   return (
     <div className="w-full rounded-xl bg-neutral-900/60 p-4">
@@ -71,6 +76,14 @@ export function FilterPanel({
           <CompanyAutocomplete
             selected={value.companies}
             onChange={(companies) => onChange({ ...value, companies })}
+          />
+
+          <YearRangeSlider
+            from={value.releaseYearFrom}
+            to={value.releaseYearTo}
+            onChange={(releaseYearFrom, releaseYearTo) =>
+              onChange({ ...value, releaseYearFrom, releaseYearTo })
+            }
           />
         </div>
       )}
