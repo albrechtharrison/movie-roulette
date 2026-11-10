@@ -12,12 +12,51 @@ import { toDiscoverParams, RELAX_ORDER, type DiscoverParams } from "@/lib/filter
 import type { Filters, Movie, PickMovieEmptyResult, PickMovieResult } from "@/lib/types/domain";
 import {
   CURATED_POOL_RATIO,
+  CLASSICS_POOL_RATIO,
   CURATED_POOL_PAGE_COUNT,
+  CLASSICS_POOL_PAGE_COUNT,
   RANDOM_POOL_PAGE_COUNT,
+  CLASSICS_VOTE_AVERAGE_FLOOR,
   PAGES_PER_FETCH,
   VOTE_COUNT_FLOOR,
   MAX_DISCOVER_PAGE,
 } from "@/lib/selection/constants";
+
+type PoolName = "curated" | "classics" | "random";
+const POOL_NAMES: PoolName[] = ["curated", "classics", "random"];
+
+/**
+ * Weights for the three blended pools (sum to 1). "curated" and "random" are
+ * both popularity-sorted — TMDB's popularity is a live, recency-weighted
+ * metric, so both skew toward whatever's trending right now regardless of
+ * page depth. "classics" sorts by all-time vote count instead, which is
+ * recency-independent (votes accumulate over a movie's whole lifetime), to
+ * balance that out with enduring favorites rather than this week's buzz.
+ */
+const POOL_WEIGHTS: Record<PoolName, number> = {
+  curated: CURATED_POOL_RATIO,
+  classics: CLASSICS_POOL_RATIO,
+  random: 1 - CURATED_POOL_RATIO - CLASSICS_POOL_RATIO,
+};
+
+const POOL_PAGE_COUNTS: Record<PoolName, number> = {
+  curated: CURATED_POOL_PAGE_COUNT,
+  classics: CLASSICS_POOL_PAGE_COUNT,
+  random: RANDOM_POOL_PAGE_COUNT,
+};
+
+function buildPoolParams(filters: Filters, pool: PoolName): DiscoverParams {
+  if (pool === "curated") {
+    return toDiscoverParams(filters, { sort_by: "popularity.desc", "vote_count.gte": VOTE_COUNT_FLOOR });
+  }
+  if (pool === "classics") {
+    return toDiscoverParams(filters, {
+      sort_by: "vote_count.desc",
+      "vote_average.gte": CLASSICS_VOTE_AVERAGE_FLOOR,
+    });
+  }
+  return toDiscoverParams(filters, {});
+}
 
 function randomInt(maxInclusive: number): number {
   return 1 + Math.floor(Math.random() * maxInclusive);
@@ -85,6 +124,21 @@ function pickRandom<T>(items: T[]): T | undefined {
   return items[Math.floor(Math.random() * items.length)];
 }
 
+/** Rolls which pool to try first, weighted, then falls back through the rest. */
+function weightedPoolOrder(): PoolName[] {
+  const roll = Math.random();
+  let cumulative = 0;
+  let primary: PoolName = POOL_NAMES[POOL_NAMES.length - 1];
+  for (const name of POOL_NAMES) {
+    cumulative += POOL_WEIGHTS[name];
+    if (roll < cumulative) {
+      primary = name;
+      break;
+    }
+  }
+  return [primary, ...POOL_NAMES.filter((n) => n !== primary)];
+}
+
 async function enrichWithWatchProviders(movie: TmdbMovie, region: string): Promise<Movie> {
   const domainMovie = mapMovie(movie);
   const oscarWin = OSCAR_BEST_PICTURE_WINNERS_BY_ID.get(movie.id);
@@ -108,39 +162,37 @@ export async function pickMovie(
   filters: Filters,
   exclusionIds: number[]
 ): Promise<PickMovieResult | PickMovieEmptyResult> {
-  const curatedBaseParams = toDiscoverParams(filters, {
-    sort_by: "popularity.desc",
-    "vote_count.gte": VOTE_COUNT_FLOOR,
-  });
-  const randomBaseParams = toDiscoverParams(filters, {});
+  const poolParams = Object.fromEntries(
+    POOL_NAMES.map((name) => [name, buildPoolParams(filters, name)])
+  ) as Record<PoolName, DiscoverParams>;
 
-  let curated = await fetchPool(curatedBaseParams, CURATED_POOL_PAGE_COUNT);
-  let random = await fetchPool(randomBaseParams, RANDOM_POOL_PAGE_COUNT);
+  const pools = Object.fromEntries(
+    await Promise.all(
+      POOL_NAMES.map(async (name) => [name, await fetchPool(poolParams[name], POOL_PAGE_COUNTS[name])] as const)
+    )
+  ) as Record<PoolName, PoolResult>;
 
-  let curatedCandidates = removeExcluded(curated.candidates, exclusionIds);
-  let randomCandidates = removeExcluded(random.candidates, exclusionIds);
+  const candidates = Object.fromEntries(
+    POOL_NAMES.map((name) => [name, removeExcluded(pools[name].candidates, exclusionIds)])
+  ) as Record<PoolName, TmdbMovie[]>;
 
   const relaxed: string[] = [];
 
   const tryBlend = (): TmdbMovie | undefined => {
-    const useCurated = Math.random() < CURATED_POOL_RATIO;
-    const primary = useCurated ? curatedCandidates : randomCandidates;
-    const fallback = useCurated ? randomCandidates : curatedCandidates;
-    return pickRandom(primary) ?? pickRandom(fallback);
+    for (const name of weightedPoolOrder()) {
+      const pick = pickRandom(candidates[name]);
+      if (pick) return pick;
+    }
+    return undefined;
   };
 
   let chosen = tryBlend();
 
   if (!chosen) {
     // Retry once with another random page, favoring whichever pool had more total pages.
-    const retryCurated = curated.totalPages >= random.totalPages;
-    if (retryCurated) {
-      curated = await fetchPool(curatedBaseParams, CURATED_POOL_PAGE_COUNT);
-      curatedCandidates = removeExcluded(curated.candidates, exclusionIds);
-    } else {
-      random = await fetchPool(randomBaseParams, RANDOM_POOL_PAGE_COUNT);
-      randomCandidates = removeExcluded(random.candidates, exclusionIds);
-    }
+    const retryPool = POOL_NAMES.reduce((a, b) => (pools[b].totalPages > pools[a].totalPages ? b : a));
+    pools[retryPool] = await fetchPool(poolParams[retryPool], POOL_PAGE_COUNTS[retryPool]);
+    candidates[retryPool] = removeExcluded(pools[retryPool].candidates, exclusionIds);
     chosen = tryBlend();
   }
 
@@ -151,19 +203,13 @@ export async function pickMovie(
       if (category === "releaseYear") {
         if (relaxedFilters.releaseYearFrom === null && relaxedFilters.releaseYearTo === null) continue;
         relaxedFilters = { ...relaxedFilters, releaseYearFrom: null, releaseYearTo: null };
-      } else if (category === "minRating") {
-        if (relaxedFilters.minRating === 0) continue;
-        relaxedFilters = { ...relaxedFilters, minRating: 0 };
       } else {
         if (relaxedFilters[category].length === 0) continue;
         relaxedFilters = { ...relaxedFilters, [category]: [] };
       }
       relaxed.push(category);
 
-      const relaxedParams = toDiscoverParams(relaxedFilters, {
-        sort_by: "popularity.desc",
-        "vote_count.gte": VOTE_COUNT_FLOOR,
-      });
+      const relaxedParams = buildPoolParams(relaxedFilters, "curated");
       const relaxedPool = await fetchPool(relaxedParams, CURATED_POOL_PAGE_COUNT);
       const relaxedCandidates = removeExcluded(relaxedPool.candidates, exclusionIds);
       chosen = pickRandom(relaxedCandidates);

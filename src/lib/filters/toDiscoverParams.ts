@@ -37,7 +37,6 @@ export function toDiscoverParams(
     with_companies: filters.companyIds.length ? filters.companyIds.join("|") : undefined,
     "primary_release_date.gte": filters.releaseYearFrom ? `${filters.releaseYearFrom}-01-01` : undefined,
     "primary_release_date.lte": filters.releaseYearTo ? `${filters.releaseYearTo}-12-31` : undefined,
-    "vote_average.gte": filters.minRating > 0 ? filters.minRating : undefined,
     include_adult: false,
     language: "en-US",
     page: 1,
@@ -47,7 +46,6 @@ export function toDiscoverParams(
 
 export type RelaxableCategory =
   | "releaseYear"
-  | "minRating"
   | "castPersonIds"
   | "companyIds"
   | "genreIds"
@@ -55,13 +53,11 @@ export type RelaxableCategory =
 
 /**
  * Order to drop filter categories in when the pool is empty — narrowest/most
- * negotiable first. Year range and minimum rating are usually soft
- * preferences, so they go before genre/provider choices, which are more
- * deliberate. Region is never dropped.
+ * negotiable first. A year range is usually a soft preference, so it goes
+ * before genre/provider choices, which are more deliberate. Region is never dropped.
  */
 export const RELAX_ORDER: RelaxableCategory[] = [
   "releaseYear",
-  "minRating",
   "castPersonIds",
   "companyIds",
   "genreIds",
